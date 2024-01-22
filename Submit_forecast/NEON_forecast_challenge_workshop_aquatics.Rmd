@@ -1,9 +1,8 @@
 ---
 title: "NEON forecast challenge - aquatics"
-author: Freya Olsson
+author: Piper Zimmerman
 output:
-  md_document: 
-    variant: markdown_github
+  html_document:
     number_sections: true
     toc: true
 date: "`r Sys.Date()`"
@@ -480,20 +479,20 @@ temp_lm_forecast_EFI_new <- temp_lm_forecast_new %>%
 
 theme <- 'aquatics'
 date <- temp_lm_forecast_EFI_new$reference_datetime[1]
-forecast_name_2 <- paste0(temp_lm_forecast_EFI_new$model_id[1], ".csv")
-forecast_file_2 <- paste(theme, date, forecast_name_2, sep = '-')
-forecast_file_2
+forecast_name_1b <- paste0(temp_lm_forecast_EFI_new$model_id[1], ".csv")
+forecast_file_1b <- paste(theme, date, forecast_name_1b, sep = '-')
+forecast_file_1b
 
 
 if (!dir.exists('Forecasts')) {
   dir.create('Forecasts')
 }
 
-write_csv(temp_lm_forecast_EFI_new, file.path('Forecasts',forecast_file_2))
+write_csv(temp_lm_forecast_EFI_new, file.path('Forecasts',forecast_file_1b))
 
-neon4cast::forecast_output_validator(file.path('Forecasts',forecast_file_2))
+neon4cast::forecast_output_validator(file.path('Forecasts',forecast_file_1b))
 
-neon4cast::submit(forecast_file = file.path('Forecasts', forecast_file_2),
+neon4cast::submit(forecast_file = file.path('Forecasts', forecast_file_1b),
                   ask = FALSE) # if ask = T (default), it will produce a pop-up box asking if you want to submit
 ```
 
@@ -515,8 +514,8 @@ This forecasting method uses a method from the `fable` R package which is instal
 `fable` and `fabletools`, are installed as part of the `fpp3` package and produce and deal with `mable` (model table) and `fable` (forecast table) objects. We will also use the `tidyverse` to manipulate and visualise the target data and forecasts. 
 
 ```{r, 'load packages', eval=TRUE, echo = TRUE, error=FALSE, warning=FALSE, message=FALSE}
-install.packages('fpp3') # package for applying simple forecasting methods
-install.packages('tsibble') # package for dealing with time series data sets and tsibble objects
+#install.packages('fpp3') # package for applying simple forecasting methods
+#install.packages('tsibble') # package for dealing with time series data sets and tsibble objects
 
 library(fpp3)      # package for forecasting
 library(tsibble)   # package for dealing with time series data sets
@@ -994,7 +993,7 @@ EFI has also produced a package that summarizes the proposed community standards
 ## Other weather variables 
 You can look at what other variables are available in the NOAA weather data. There's information in the [Challenge documentation](https://projects.ecoforecast.org/neon4cast-docs/Shared-Forecast-Drivers.html) too.
 
-```{r}
+```{r eval=FALSE}
 df_past %>%
   filter(site_id == 'ARIK',
          datetime > ymd('2022-01-01')) |> 
