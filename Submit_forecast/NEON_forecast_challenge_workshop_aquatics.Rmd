@@ -436,6 +436,67 @@ Possible modifications to Model 1 - simple linear model:
 
 Remember to change the `model_id` so we can differentiate different forecasts!
 
+```{r}
+temp_lm_forecast_new <- NULL
+
+for(i in 1:length(lake_sites$field_site_id)) {  
+  
+  example_site <- lake_sites$field_site_id[i]
+  
+  site_target <- targets_lm |>
+    filter(site_id == example_site)
+
+  noaa_future_site <- noaa_future_daily |> 
+    filter(site_id == example_site)
+  
+  #Fit linear model based on past data: water temperature = m * air temperature + b
+  fit <- lm(site_target$temperature ~ lag(site_target$air_temperature))
+  # fit <- lm(site_target$temperature ~ ....)
+    
+  # use linear regression to forecast water temperature for each ensemble member
+  forecasted_temperature <- fit$coefficients[1] + fit$coefficients[2] * noaa_future_site$air_temperature
+    
+  # put all the relavent information into a tibble that we can bind together
+  temperature <- tibble(datetime = noaa_future_site$datetime,
+                        site_id = example_site,
+                        parameter = noaa_future_site$parameter,
+                        prediction = forecasted_temperature,
+                        variable = "temperature")
+  
+  temp_lm_forecast_new <- dplyr::bind_rows(temp_lm_forecast, temperature)
+  message(example_site, ' temperature forecast run')
+  
+}
+
+my_model_id_new <- 'new_example_ID'
+
+temp_lm_forecast_EFI_new <- temp_lm_forecast_new %>%
+  filter(datetime > forecast_date) %>%
+  mutate(model_id = my_model_id_new,
+         reference_datetime = forecast_date,
+         family = 'ensemble',
+         parameter = as.character(parameter)) %>%
+  select(datetime, reference_datetime, site_id, family, parameter, variable, prediction, model_id)
+
+theme <- 'aquatics'
+date <- temp_lm_forecast_EFI_new$reference_datetime[1]
+forecast_name_2 <- paste0(temp_lm_forecast_EFI_new$model_id[1], ".csv")
+forecast_file_2 <- paste(theme, date, forecast_name_2, sep = '-')
+forecast_file_2
+
+
+if (!dir.exists('Forecasts')) {
+  dir.create('Forecasts')
+}
+
+write_csv(temp_lm_forecast_EFI_new, file.path('Forecasts',forecast_file_2))
+
+neon4cast::forecast_output_validator(file.path('Forecasts',forecast_file_2))
+
+neon4cast::submit(forecast_file = file.path('Forecasts', forecast_file_2),
+                  ask = FALSE) # if ask = T (default), it will produce a pop-up box asking if you want to submit
+```
+
 ## Register your participation
 It's really important that once you start submitting forecasts to the Challenge that you register your participation. We ask that you complete this [form](https://nd.qualtrics.com/jfe/form/SV_9MJ29y2xNrBOjqZ) which asks you some simple questions about your forecast and team. This is crucial for a couple of reasons:
 
