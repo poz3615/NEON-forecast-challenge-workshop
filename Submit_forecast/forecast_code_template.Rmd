@@ -20,6 +20,7 @@ knitr::opts_chunk$set(echo = TRUE)
 # Load packages
 library(tidyverse)
 library(lubridate)
+library(neon4cast)
 
 ```
 
@@ -118,9 +119,17 @@ for(i in 1:length(lake_sites$field_site_id)) {
   #Fit linear model based on past data: water temperature = m * air temperature + b
   fit <- lm(site_target$temperature ~ lag(site_target$air_temperature))
   # fit <- lm(site_target$temperature ~ ....)
-    
+  fit_summary<-summary(fit)
+  
+  coeffs <- round(fit$coefficients, 2)
+  
+  params_se <- fit_summary$coefficients[,2]
+  
+  param_df <- data.frame(beta1 = rnorm(31, coeffs[1], params_se[1]),
+                       beta2 = rnorm(31, coeffs[2], params_se[2]))
+  
   # use linear regression to forecast water temperature for each ensemble member
-  forecasted_temperature <- fit$coefficients[1] + fit$coefficients[2] * lag(noaa_future_site$air_temperature)
+  forecasted_temperature <- param_df$beta1 + param_df$beta2 * lag(noaa_future_site$air_temperature)+ rnorm(n = 31, mean = 0, sd = sd(fit$residuals,na.rm=TRUE))
     
   # put all the relavent information into a tibble that we can bind together
   temperature <- tibble(datetime = noaa_future_site$datetime,
@@ -138,14 +147,14 @@ for(i in 1:length(lake_sites$field_site_id)) {
 ```{r make-standard}
 # Make forecast fit the EFI standards
 # Remember to change the model_id when you make changes to the model structure!
-my_model_id <- 'jan25_example_ID'
+my_model_id <- 'feb6_add_uncert_example_ID'
 
-temp_lm_forecast_EFI <- temp_lm_forecast %>%
-  filter(datetime > forecast_date) %>%
+temp_lm_forecast_EFI <- temp_lm_forecast |> 
+  filter(datetime > forecast_date) |> 
   mutate(model_id = my_model_id,
          reference_datetime = forecast_date,
          family = 'ensemble',
-         parameter = as.character(parameter)) %>%
+         parameter = as.character(parameter)) |> 
   select(datetime, reference_datetime, site_id, family, parameter, variable, prediction, model_id)
 
 ```
