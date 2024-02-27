@@ -20,6 +20,8 @@ knitr::opts_chunk$set(echo = TRUE)
 # Load packages
 library(tidyverse)
 library(lubridate)
+library(tidymodels)
+library(modeltime)
 ```
 
 ```{r get-targets, message=F}
@@ -44,7 +46,7 @@ targets <- targets %>%
 # Past stacked weather
 noaa_past_s3 <- neon4cast::noaa_stage3()
 
-variables <- c("air_temperature")
+variables <- c("air_temperature","air_pressure")
 #Other variable names can be found at https://projects.ecoforecast.org/neon4cast-docs/Shared-Forecast-Drivers.html#stage-3
 
 noaa_past <- noaa_past_s3  |> 
@@ -71,7 +73,7 @@ forecast_date <- Sys.Date()
 noaa_date <- forecast_date - days(1)
 
 noaa_future_s3 <- neon4cast::noaa_stage2(start_date = as.character(noaa_date))
-variables <- c("air_temperature")
+variables <- c("air_temperature","air_pressure")
 
 noaa_future <- noaa_future_s3 |> 
   dplyr::filter(datetime >= forecast_date,
@@ -87,7 +89,7 @@ noaa_future_daily <- noaa_future |>
   pivot_wider(names_from = variable, values_from = prediction) |>
   # convert to Celsius
   mutate(air_temperature = air_temperature - 273.15) |> 
-  select(datetime, site_id, air_temperature, parameter)
+  select(datetime, site_id, air_temperature, parameter,air_pressure)
 ```
 
 
@@ -98,14 +100,13 @@ targets_lm <- targets |>
   pivot_wider(names_from = 'variable', values_from = 'observation') |> 
   left_join(noaa_past_mean, 
             by = c("datetime","site_id"))
-
 # Loop through each site to fit the model
 temp_lm_forecast <- NULL
 
 ```
 
-```{r forecast-loop}
-forecast_horizon <- 30
+```{r forecast-loop, eval=FALSE}
+forecast_horizon <- 35
 forecast_dates <- seq(from = ymd(forecast_date), to = ymd(forecast_date) + forecast_horizon, by = "day")
 n_members <- 31
 for(i in 1:length(lake_sites$field_site_id)) {  
@@ -119,8 +120,9 @@ for(i in 1:length(lake_sites$field_site_id)) {
     filter(site_id == example_site)
   
   #Fit linear model based on past data: water temperature = m * air temperature + b
-  fit <- lm(site_target$temperature ~ lag(site_target$air_temperature))
-    fit_summary<-summary(fit)
+
+   fit <- lm(site_target$temperature ~ lag(site_target$air_temperature))
+     fit_summary<-summary(fit)
 
   # fit <- lm(site_target$temperature ~ ....)
   coeffs <- round(fit$coefficients, 2)
@@ -154,26 +156,102 @@ for(i in 1:length(lake_sites$field_site_id)) {
 }
 ```
 
+```{r proj1}
+split <- initial_split(targets_lm, prop = 0.80, strata = site_id)
+train_data <- training(split)
+test_data <- testing(split)
+our_recipe <- train_data |> 
+  recipe(temperature ~ . ) |> 
+  #step_rm(datetime) |>
+  step_naomit(air_temperature, temperature,air_pressure)
+
+our_model <- arima_reg(mode = "regression",
+                       seasonal_period = NULL,
+                       non_seasonal_ar = 2,
+                       non_seasonal_differences = NULL,
+                       non_seasonal_ma = NULL,
+                       seasonal_ar = NULL,
+                       seasonal_differences = NULL,
+                       seasonal_ma = NULL
+                       ) |> 
+  set_engine("arima")
+
+wflow <-
+  workflow() |> 
+  add_model(our_model) |> 
+  add_recipe(our_recipe)
+
+fit <- wflow |> 
+  fit(data = train_data)
+
+predictions <- predict(fit, new_data = test_data)
+
+pred_test <- bind_cols(test_data, predictions)
+
+multi_metric <- metric_set(rmse, rsq)
+
+metric_table <- pred_test |> 
+  multi_metric(truth = temperature, estimate = .pred)
+
+metric_table
+
+
+targets_future <- noaa_future_daily |> 
+  mutate(temperature = NA,
+         doy = yday(datetime))
+new_predictions <- predict(fit, new_data = targets_future)
+
+
+tidymodels_forecast <- data.frame()
+
+for(i in unique(targets_future$parameter)){
+  curr_ens <- targets_future |> 
+    filter(parameter == i) |> 
+    select(-parameter)
+  
+  new_predictions <- predict(fit, new_data = curr_ens)
+  curr_ens <- bind_cols(curr_ens, new_predictions) |> 
+    mutate(parameter = i)
+  tidymodels_forecast <- bind_rows(tidymodels_forecast, curr_ens)
+}
+
+# tidymodels_forecasts_EFI |>
+#   filter(variable == "temperature") |>
+#   ggplot(aes(x = datetime, y = prediction, group = parameter)) +
+#   geom_line() + 
+#   facet_wrap(~site_id)
+```
+
 ```{r make-standard}
 # Make forecast fit the EFI standards
 # Remember to change the model_id when you make changes to the model structure!
-my_model_id <- 'feb8_add_uncert_example_ID'
+#my_model_id <- 'zim_proj1_example_ID'
+tidymodels_forecasts_EFI <- tidymodels_forecast %>%
+  rename(prediction = .pred) %>%
+  mutate(variable = "temperature") |> 
+  # For the EFI challenge we only want the forecast for future
+  filter(datetime > Sys.Date()) %>%
+  group_by(site_id, variable) %>%
+  mutate(reference_datetime = min(datetime) - lubridate::days(1),
+         family = "ensemble",
+         model_id = "zimmerman_proj1") %>%
+  select(model_id, datetime, reference_datetime, site_id, family, parameter, variable, prediction)
 
-temp_lm_forecast_EFI <- temp_lm_forecast |> 
-  filter(datetime > forecast_date) |> 
-  mutate(model_id = my_model_id,
-         reference_datetime = forecast_date,
-         family = 'ensemble',
-         parameter = as.character(parameter)) |> 
-  select(datetime, reference_datetime, site_id, family, parameter, variable, prediction, model_id)
+# temp_lm_forecast_EFI <- tidymodels_forecast |> 
+#   filter(datetime > forecast_date) |> 
+#   mutate(model_id = my_model_id,
+#          reference_datetime = forecast_date,
+#          family = 'ensemble',
+#          parameter = as.character(parameter)) |> 
+#   select(datetime, reference_datetime, site_id, family, parameter, variable, prediction, model_id)
 
 ```
 
 ```{r write-forecast}
 # Write the forecast to file
 theme <- 'aquatics'
-date <- temp_lm_forecast_EFI$reference_datetime[1]
-forecast_name_1 <- paste0(temp_lm_forecast_EFI$model_id[1], ".csv")
+date <- tidymodels_forecasts_EFI$reference_datetime[1]
+forecast_name_1 <- paste0(tidymodels_forecasts_EFI$model_id[1], ".csv")
 forecast_file_1 <- paste(theme, date, forecast_name_1, sep = '-')
 forecast_file_1
 
@@ -182,7 +260,7 @@ if (!dir.exists('Forecasts')) {
   dir.create('Forecasts')
 }
 
-write_csv(temp_lm_forecast_EFI, file.path('Forecasts',forecast_file_1))
+write_csv(tidymodels_forecasts_EFI, file.path('Forecasts',forecast_file_1))
 
 neon4cast::forecast_output_validator(file.path('Forecasts',forecast_file_1))
 
@@ -194,16 +272,16 @@ neon4cast::forecast_output_validator(file.path('Forecasts',forecast_file_1))
 ## # can uses the neon4cast::forecast_output_validator() to check the forecast is in the right format
 
 # UNCOMMMENT THIS WHEN YOU ARE READY TO SUBMIT
-## neon4cast::submit(forecast_file = file.path('Forecasts', forecast_file_1),
-##                   ask = FALSE) # if ask = T (default), it will produce a pop-up box asking if you want to submit
+# neon4cast::submit(forecast_file = file.path('Forecasts', forecast_file_1),
+#                   ask = FALSE) # if ask = T (default), it will produce a pop-up box asking if you want to submit
 
 
 ```
 
 ```{r plot-forecast}
-temp_lm_forecast_EFI |> 
+tidymodels_forecasts_EFI |> 
   ggplot(aes(x=datetime, y=prediction, group = parameter)) +
   geom_line() +
   facet_wrap(~site_id) +
-  labs(title = paste0('Forecast generated for ', temp_lm_forecast_EFI$variable[1], ' on ', temp_lm_forecast_EFI$reference_datetime[1]))
+  labs(title = paste0('Forecast generated for ', tidymodels_forecasts_EFI$variable[1], ' on ', tidymodels_forecasts_EFI$reference_datetime[1]))
 ```
