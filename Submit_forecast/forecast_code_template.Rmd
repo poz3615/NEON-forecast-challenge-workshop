@@ -163,7 +163,7 @@ test_data <- testing(split)
 our_recipe <- train_data |> 
   recipe(temperature ~ . ) |> 
   #step_rm(datetime) |>
-  step_naomit(air_temperature, temperature,air_pressure)
+  step_naomit(air_temperature, temperature, air_pressure)
 
 our_model <- arima_reg(mode = "regression",
                        seasonal_period = NULL,
@@ -234,8 +234,9 @@ tidymodels_forecasts_EFI <- tidymodels_forecast %>%
   group_by(site_id, variable) %>%
   mutate(reference_datetime = min(datetime) - lubridate::days(1),
          family = "ensemble",
-         model_id = "zimmerman_proj1") %>%
-  select(model_id, datetime, reference_datetime, site_id, family, parameter, variable, prediction)
+         model_id = "zimmerman_proj1",
+         project_id="neon4cast") %>%
+  select(model_id, datetime, reference_datetime, site_id, family, parameter, variable, prediction,project_id)
 
 # temp_lm_forecast_EFI <- tidymodels_forecast |> 
 #   filter(datetime > forecast_date) |> 
@@ -271,9 +272,9 @@ neon4cast::forecast_output_validator(file.path('Forecasts',forecast_file_1))
 
 ## # can uses the neon4cast::forecast_output_validator() to check the forecast is in the right format
 
-# UNCOMMMENT THIS WHEN YOU ARE READY TO SUBMIT
-# neon4cast::submit(forecast_file = file.path('Forecasts', forecast_file_1),
-#                   ask = FALSE) # if ask = T (default), it will produce a pop-up box asking if you want to submit
+#UNCOMMMENT THIS WHEN YOU ARE READY TO SUBMIT
+#neon4cast::submit(forecast_file = file.path('Forecasts', forecast_file_1),
+ #                 ask = FALSE) # if ask = T (default), it will produce a pop-up box asking if you want to submit
 
 
 ```
