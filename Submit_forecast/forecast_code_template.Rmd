@@ -286,3 +286,10 @@ tidymodels_forecasts_EFI |>
   facet_wrap(~site_id) +
   labs(title = paste0('Forecast generated for ', tidymodels_forecasts_EFI$variable[1], ' on ', tidymodels_forecasts_EFI$reference_datetime[1]))
 ```
+
+
+**I created an ARIMA(2,0,0) model, also including air pressure and air temperature as variables. I included these two variables because when I looked at plots of each variable in relation to water temperature, air pressure and air temperature were the two with the most distinct relationship. I created a couple different ARIMA models, trying the xgboost and the default ARIMA(0,0,0). I also tried an exponential smoothing model a neural network, but both of those models had very high RMSEs. The xgboost model had a higher RMSE and lower R squared than the other ARIMA models. The ARIMA(0,0,0) model had better values than the ARIMA(2,0,0) model, but I believe adding two autoregressive terms could help, since the water temperature tomorrow is highly correlated to the water temperature today. Even though the model performed slightly worse in the testing set, this is the final model that I chose.**
+
+
+
+
